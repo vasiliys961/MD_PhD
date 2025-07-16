@@ -1,27 +1,34 @@
 import os
+from dotenv import load_dotenv
+load_dotenv()  # <-- ПЕРВЫМ делом после импортов!
+
 import json
 import openai
 from datetime import datetime
-from dotenv import load_dotenv
 from telegram import Update, Document
 from telegram.ext import (
     ApplicationBuilder, MessageHandler, filters, CommandHandler,
     ContextTypes
 )
+import tempfile
 
-# 📦 .env
+# 🔐 Загрузка переменных
 load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "").strip()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 OPENAI_API_BASE = os.getenv("OPENAI_API_BASE", "https://openrouter.ai/api/v1").strip()
-
 MODEL = "openai/gpt-4o"
 
-# 🔐 OpenAI client
+# ⚠️ Проверка ключей
+print("DEBUG: TELEGRAM_TOKEN =", repr(TELEGRAM_TOKEN))
+print("DEBUG: OPENAI_API_KEY =", repr(OPENAI_API_KEY))
+print("DEBUG: OPENAI_API_BASE =", repr(OPENAI_API_BASE))
+
+# Инициализация OpenAI 0.28
 openai.api_key = OPENAI_API_KEY
 openai.api_base = OPENAI_API_BASE
 
-# 📜 Система
+# 📎 Инструкция для ВМК
 system_instruction = '''
 Общая Концепция: Мультиагентный Медицинский Консультант
 
@@ -116,19 +123,19 @@ UpToDate, Medscape, PubMed Central, Cochrane Reviews, руководства п�
 Вы – лицо системы: обеспечивайте целостный, компетентный, этичный ответ, при необходимости , по запросу можешь предложить и evidence-based альтернативные подходы.
 '''
 
-# 🧠 Память
+# 🔁 История + Сводки
 chat_histories = {}
 summaries = {}
 
-# 📁 Папки
+# 📂 Папки
 os.makedirs("logs", exist_ok=True)
 os.makedirs("uploads", exist_ok=True)
 
-# 🚀 /start
+# /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🧠 Привет! Я ВМК. Задайте медицинский вопрос или отправьте PDF/TXT.")
+    await update.message.reply_text("🧠 Привет! Я ВМК. Задайте медицинский вопрос или отправьте PDF/TXT файл.")
 
-# 📄 PDF/TXT
+# 📄 Обработка PDF и TXT
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     document: Document = update.message.document
     file_name = document.file_name.lower()
@@ -137,14 +144,13 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         if file_name.endswith(".pdf"):
-            import fitz
             doc = fitz.open(file_path)
             file_text = "\n".join([page.get_text() for page in doc])
         elif file_name.endswith(".txt"):
             with open(file_path, "r", encoding="utf-8") as f:
                 file_text = f.read()
         else:
-            await update.message.reply_text("❌ Файл не поддерживается.")
+            await update.message.reply_text("Формат не поддерживается. Только PDF или TXT.")
             return
 
         await process_text(update, context, f"Содержимое файла:\n{file_text[:3000]}")
@@ -153,27 +159,29 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         os.remove(file_path)
 
-# 📥 Сообщения
+# 💬 Обработка текстовых сообщений
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_text = update.message.text
-    await process_text(update, context, user_text)
+    await process_text(update, context, update.message.text)
 
-# 🤖 Основная логика
+# 🧠 Основная логика
 async def process_text(update: Update, context: ContextTypes.DEFAULT_TYPE, user_message: str):
     chat_id = update.effective_chat.id
     await update.message.chat.send_action("typing")
 
+    # Память
     if chat_id not in chat_histories:
         chat_histories[chat_id] = []
     chat_histories[chat_id].append({"role": "user", "content": user_message})
 
+    # Суммаризация
     if len(chat_histories[chat_id]) >= 6:
         summaries[chat_id] = summarize_history(chat_histories[chat_id])
         chat_histories[chat_id] = chat_histories[chat_id][-2:]
 
+    # Подготовка сообщений
     messages = [{"role": "system", "content": system_instruction}]
     if chat_id in summaries:
-        messages.append({"role": "system", "content": f"Резюме:\n{summaries[chat_id]}"})
+        messages.append({"role": "system", "content": f"Резюме диалога:\n{summaries[chat_id]}"})
     messages += chat_histories[chat_id]
 
     try:
@@ -182,7 +190,7 @@ async def process_text(update: Update, context: ContextTypes.DEFAULT_TYPE, user_
             messages=messages,
             temperature=0.3
         )
-        reply = response.choices[0].message.content
+        reply = response.choices[0].message['content']
         chat_histories[chat_id].append({"role": "assistant", "content": reply})
 
         for chunk in [reply[i:i+4096] for i in range(0, len(reply), 4096)]:
@@ -192,23 +200,23 @@ async def process_text(update: Update, context: ContextTypes.DEFAULT_TYPE, user_
     except Exception as e:
         await update.message.reply_text(f"⚠️ Ошибка: {e}")
 
-# 🧾 Суммаризация
+# ✂️ Суммаризация
 def summarize_history(messages: list) -> str:
-    summary_prompt = [
-        {"role": "system", "content": "Ты ассистент. Сделай краткое резюме диалога между врачом и AI."},
-        {"role": "user", "content": "\n".join([f"{m['role']}: {m['content']}" for m in messages])}
-    ]
     try:
+        summary_prompt = [
+            {"role": "system", "content": "Сделай краткое резюме диалога между врачом и AI."},
+            {"role": "user", "content": "\n".join([f"{m['role']}: {m['content']}" for m in messages])}
+        ]
         response = openai.ChatCompletion.create(
             model=MODEL,
             messages=summary_prompt,
             temperature=0.3
         )
-        return response.choices[0].message.content.strip()
+        return response.choices[0].message['content'].strip()
     except:
         return "Суммаризация не удалась."
 
-# 📚 Логи
+# 💾 Логирование
 def save_log(chat_id, user_text, bot_response):
     log = {
         "timestamp": datetime.utcnow().isoformat(),
@@ -219,13 +227,13 @@ def save_log(chat_id, user_text, bot_response):
     with open(f"logs/{chat_id}.json", "a", encoding="utf-8") as f:
         f.write(json.dumps(log, ensure_ascii=False) + "\n")
 
-# ▶️ Запуск
+# ▶️ Запуск бота
 def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
-    print("🤖 ВМК Telegram-бот работает.")
+    print("🤖 ВМК Telegram-бот запущен.")
     app.run_polling()
 
 if __name__ == "__main__":
