@@ -1,7 +1,5 @@
-import os
 import json
 import openai
-from openai import OpenAI
 from datetime import datetime
 from dotenv import load_dotenv
 from telegram import Update, Document
@@ -9,24 +7,21 @@ from telegram.ext import (
     ApplicationBuilder, MessageHandler, filters, CommandHandler,
     ContextTypes
 )
-import tempfile
 
-# Загрузка переменных окружения
+# 📦 .env
 load_dotenv()
 
-# Переменные окружения
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_API_BASE = os.getenv("OPENAI_API_BASE", "https://openrouter.ai/api/v1")
 MODEL = "openai/gpt-4o"
 
-# Инициализация клиента OpenAI
-client = OpenAI(
-    api_key=OPENAI_API_KEY,
-    base_url=OPENAI_API_BASE
-)
+# 🔐 OpenAI client
+openai.api_key = OPENAI_API_KEY
+openai.api_base = OPENAI_API_BASE
+OPENAI_API_BASE = OPENAI_API_BASE.strip()
 
-# ВМК инструкция — вставь свою по желанию
+# 📜 Система
 system_instruction = '''
 Общая Концепция: Мультиагентный Медицинский Консультант
 
@@ -121,19 +116,19 @@ UpToDate, Medscape, PubMed Central, Cochrane Reviews, руководства п�
 Вы – лицо системы: обеспечивайте целостный, компетентный, этичный ответ, при необходимости , по запросу можешь предложить и evidence-based альтернативные подходы.
 '''
 
-# Хранилище истории
+# 🧠 Память
 chat_histories = {}
 summaries = {}
 
-# Папки
+# 📁 Папки
 os.makedirs("logs", exist_ok=True)
 os.makedirs("uploads", exist_ok=True)
 
-# Команда /start
+# 🚀 /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🧠 Привет! Я ВМК. Задайте медицинский вопрос или отправьте PDF/TXT.")
 
-# Обработка документов
+# 📄 PDF/TXT
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     document: Document = update.message.document
     file_name = document.file_name.lower()
@@ -158,12 +153,12 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         os.remove(file_path)
 
-# Обработка текста
+# 📥 Сообщения
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     await process_text(update, context, user_text)
 
-# Обработка запроса с памятью
+# 🤖 Основная логика
 async def process_text(update: Update, context: ContextTypes.DEFAULT_TYPE, user_message: str):
     chat_id = update.effective_chat.id
     await update.message.chat.send_action("typing")
@@ -182,7 +177,7 @@ async def process_text(update: Update, context: ContextTypes.DEFAULT_TYPE, user_
     messages += chat_histories[chat_id]
 
     try:
-        response = client.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model=MODEL,
             messages=messages,
             temperature=0.3
@@ -197,14 +192,14 @@ async def process_text(update: Update, context: ContextTypes.DEFAULT_TYPE, user_
     except Exception as e:
         await update.message.reply_text(f"⚠️ Ошибка: {e}")
 
-# Резюме
+# 🧾 Суммаризация
 def summarize_history(messages: list) -> str:
     summary_prompt = [
         {"role": "system", "content": "Ты ассистент. Сделай краткое резюме диалога между врачом и AI."},
         {"role": "user", "content": "\n".join([f"{m['role']}: {m['content']}" for m in messages])}
     ]
     try:
-        response = client.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model=MODEL,
             messages=summary_prompt,
             temperature=0.3
@@ -213,7 +208,7 @@ def summarize_history(messages: list) -> str:
     except:
         return "Суммаризация не удалась."
 
-# Сохранение лога
+# 📚 Логи
 def save_log(chat_id, user_text, bot_response):
     log = {
         "timestamp": datetime.utcnow().isoformat(),
@@ -224,7 +219,7 @@ def save_log(chat_id, user_text, bot_response):
     with open(f"logs/{chat_id}.json", "a", encoding="utf-8") as f:
         f.write(json.dumps(log, ensure_ascii=False) + "\n")
 
-# Запуск
+# ▶️ Запуск
 def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
