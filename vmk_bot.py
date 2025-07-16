@@ -1,3 +1,4 @@
+import os
 import json
 import openai
 from datetime import datetime
@@ -19,7 +20,6 @@ MODEL = "openai/gpt-4o"
 # 🔐 OpenAI client
 openai.api_key = OPENAI_API_KEY
 openai.api_base = OPENAI_API_BASE
-OPENAI_API_BASE = OPENAI_API_BASE.strip()
 
 # 📜 Система
 system_instruction = '''
