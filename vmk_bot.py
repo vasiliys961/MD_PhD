@@ -9,6 +9,11 @@ from telegram.ext import (
     ContextTypes
 )
 import tempfile
+import os
+
+print("DEBUG: TELEGRAM_TOKEN =", os.getenv("TELEGRAM_TOKEN"))
+print("DEBUG: OPENAI_API_KEY =", os.getenv("OPENAI_API_KEY"))
+print("DEBUG: OPENAI_API_BASE =", os.getenv("OPENAI_API_BASE"))
 
 # Загрузка переменных окружения
 load_dotenv()
