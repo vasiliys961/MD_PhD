@@ -11,10 +11,10 @@ from telegram.ext import (
 
 # 📦 .env
 load_dotenv()
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "").strip()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+OPENAI_API_BASE = os.getenv("OPENAI_API_BASE", "https://openrouter.ai/api/v1").strip()
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_API_BASE = os.getenv("OPENAI_API_BASE", "https://openrouter.ai/api/v1")
 MODEL = "openai/gpt-4o"
 
 # 🔐 OpenAI client
