@@ -24,7 +24,9 @@ OPENAI_API_BASE = os.getenv("OPENAI_API_BASE", "https://openrouter.ai/api/v1")
 MODEL = "openai/gpt-4o"
 
 # Инициализация клиента
-client = openai.OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_API_BASE)
+openai.api_key = OPENAI_API_KEY
+openai.api_base = OPENAI_API_BASE
+
 
 # ВМК инструкция — вставь сюда свою полную при желании
 system_instruction = '''
