@@ -1,1 +1,2 @@
-worker: python vmk_bot.py
+web: python vmk_bot.py
+
